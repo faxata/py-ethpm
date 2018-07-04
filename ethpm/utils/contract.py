@@ -4,30 +4,36 @@ from typing import (
     Any,
     Dict,
     Generator,
+    List,
     Tuple,
 )
-
-from ethpm.exceptions import ValidationError
-
-from web3 import Web3
 
 from eth_utils import (
     to_bytes,
     to_dict,
-    encode_hex
+    encode_hex,
+)
+
+from solc import compile_files
+
+from web3 import Web3
+
+from ethpm import V2_PACKAGES_DIR
+from ethpm.exceptions import (
+    InsufficientAssetsError,
+    ValidationError,
 )
 
 
-def validate_minimal_contract_data_present(contract_data: Dict[str, str]) -> None:
+def validate_minimal_contract_factory_data(contract_data: Dict[str, str]) -> None:
     """
-    Validate that contract data contains at least one of the following keys
-    necessary to generate contract factory.
-
-    "abi", "bytecode", "runtime_bytecode"
+    Validate that contract data in a package contains at least an "abi" and
+    "deployment_bytecode" necessary to generate a deployable contract factory.
     """
-    if not any(key in contract_data.keys() for key in ("abi", "bytecode", "runtime_bytecode")):
-        raise ValidationError(
-            "Minimum required contract data (abi/bytecode/runtime_bytecode) not found."
+    if not all(key in contract_data.keys() for key in ("abi", "deployment_bytecode")):
+        raise InsufficientAssetsError(
+            "Minimum required contract data to generate a deployable "
+            "contract factory (abi & deployment_bytecode) not found."
         )
 
 
@@ -58,3 +64,18 @@ def generate_contract_factory_kwargs(
     if "runtime_bytecode" in contract_data:
         runtime_bytecode = to_bytes(text=contract_data["runtime_bytecode"]["bytecode"])
         yield "bytecode_runtime", encode_hex(runtime_bytecode)
+
+
+def compile_contracts(contract_name: str, alias: str, paths: List[str]) -> str:
+    '''
+    Compile multiple contracts to bytecode.
+    '''
+    bin_id = '{0}.sol:{0}'.format(contract_name)
+    contract_paths = [
+        str(V2_PACKAGES_DIR / alias / path[1:])
+        for path in paths
+    ]
+    compiled_source = compile_files(contract_paths)
+    bin_lookup = str(V2_PACKAGES_DIR / alias / bin_id)
+    compiled_source_bin = compiled_source[bin_lookup]['bin']
+    return compiled_source_bin
